@@ -64,7 +64,7 @@ h2, h3, h4 {
   color: #333;
 }
 
-/* Forms */
+/* Forms (generic) */
 form {
   max-width: 400px;
   margin: 0 auto;
@@ -122,24 +122,29 @@ button:hover {
 .post a:hover {
   text-decoration: underline;
 }
+
 /* Pagination */
 .pagination {
   text-align: center;
   margin-top: 20px;
 }
+
 .pagination a {
   color: #007bff;
   margin: 0 5px;
   text-decoration: none;
   font-weight: bold;
 }
+
 .pagination a:hover {
   text-decoration: underline;
 }
+
 .pagination .current-page {
   font-weight: bold;
   text-decoration: underline;
 }
+
 /* Messages */
 .message {
   text-align: center;
@@ -147,16 +152,19 @@ button:hover {
   margin-bottom: 15px;
   border-radius: 5px;
 }
+
 .message.success {
   background: #d4edda;
   color: #155724;
   border: 1px solid #c3e6cb;
 }
+
 .message.error {
   background: #f8d7da;
   color: #721c24;
   border: 1px solid #f5c6cb;
 }
+
 /* Footer */
 footer {
   text-align: center;
@@ -167,15 +175,36 @@ footer {
   bottom: 0;
   width: 100%;
 }
+
 footer p {
   margin: 0;
   font-size: 14px;
 }
+
 /* Responsive */
 @media (max-width: 768px) {
   .container {
     width: 90%;
     margin-top: 80px;
   }
+}
+
+/* --- Task 3 Additions (Search + Pagination) --- */
+.search-form {
+  margin: 15px auto;
+  max-width: 400px;
+  display: flex;
+  gap: 6px;
+}
+
+.search-form input[type="text"] {
+  flex: 1;
+}
+
+.pagination a.active-page {
+  color: white;
+  background: #007bff;
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 /* End of file */
