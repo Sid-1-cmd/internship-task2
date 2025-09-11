@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 session_start();
-include 'db.php';
+require_once 'db.php';
 
 // If already logged in, redirect
 if (isset($_SESSION['user'])) {
@@ -20,7 +22,10 @@ $message = "";
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // CSRF validation
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
         $message = "⚠️ Invalid request. Please try again.";
     } else {
         $username = trim($_POST['username']);
@@ -28,7 +33,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $role = "user"; // default role
 
         // Validate inputs
-        if (empty($username) || empty($password)) {
+        if ($username === "" || $password === "") {
             $message = "⚠️ All fields are required.";
         } elseif (!preg_match("/^[a-zA-Z0-9_]{3,20}$/", $username)) {
             $message = "⚠️ Username must be 3-20 characters (letters, numbers, underscores).";
@@ -52,14 +57,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 if ($stmt->execute()) {
                     // Secure session handling
                     session_regenerate_id(true);
-                    $_SESSION["user"] = $username;
-                    $_SESSION["role"] = $role;
+
                     $_SESSION["user_id"] = $stmt->insert_id;
+                    $_SESSION["user"] = htmlspecialchars($username, ENT_QUOTES, 'UTF-8');
+                    $_SESSION["role"] = $role;
+
+                    // Clear CSRF token after success
+                    unset($_SESSION['csrf_token']);
+
+                    $_SESSION['message'] = "✅ Registration successful. Welcome, " . htmlspecialchars($username, ENT_QUOTES, 'UTF-8') . "!";
 
                     header("Location: index.php");
                     exit();
                 } else {
-                    $message = "❌ Error: " . $stmt->error;
+                    $message = "❌ Error: Registration failed.";
+                    error_log("Registration error: " . $stmt->error);
                 }
             }
             $stmt->close();
@@ -73,14 +85,16 @@ include 'header.php';
 <div class="container">
     <h2>Register</h2>
     <?php if ($message): ?>
-        <p class="message"><?php echo htmlspecialchars($message); ?></p>
+        <p class="message"><?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?></p>
     <?php endif; ?>
 
     <form method="post" action="">
         <input type="text" name="username" placeholder="Enter username" required>
         <input type="password" name="password" placeholder="Enter password" required>
+
         <!-- CSRF token -->
-        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8'); ?>">
+
         <button type="submit">Register</button>
     </form>
 

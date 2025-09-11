@@ -3,7 +3,7 @@ session_start();
 include 'db.php';
 
 // Require login
-if (!isset($_SESSION['user'])) {
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
@@ -25,49 +25,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $title = trim($_POST['title'] ?? '');
         $content = trim($_POST['content'] ?? '');
 
-        // Basic server-side validation
+        // Validation
         if ($title === '' || $content === '') {
             $error = "⚠️ Please enter both title and content.";
         } elseif (strlen($title) > 255) {
             $error = "⚠️ Title must be 255 characters or less.";
         } else {
-            // Determine user_id (from session; fallback: lookup by username)
-            $user_id = $_SESSION['user_id'] ?? null;
-            if ($user_id === null && !empty($_SESSION['user'])) {
-                $lookup = $conn->prepare("SELECT id FROM users WHERE username = ? LIMIT 1");
-                $lookup->bind_param("s", $_SESSION['user']);
-                $lookup->execute();
-                $r = $lookup->get_result();
-                if ($r && $r->num_rows === 1) {
-                    $userRow = $r->fetch_assoc();
-                    $user_id = (int)$userRow['id'];
-                }
-                $lookup->close();
-            }
+            $user_id = $_SESSION['user_id'];
 
-            if ($user_id === null) {
-                $error = "❌ Could not determine your user ID. Please log out and log in again.";
-            } else {
-                // Insert post (including user_id)
+            try {
                 $stmt = $conn->prepare("INSERT INTO posts (title, content, user_id, created_at) VALUES (?, ?, ?, NOW())");
-                if (!$stmt) {
-                    $error = "Database error (prepare): " . htmlspecialchars($conn->error);
+                $stmt->bind_param("ssi", $title, $content, $user_id);
+
+                if ($stmt->execute()) {
+                    $_SESSION['message'] = "✅ Post created successfully.";
+                    header("Location: index.php");
+                    exit();
                 } else {
-                    $stmt->bind_param("ssi", $title, $content, $user_id);
-                    if ($stmt->execute()) {
-                        header("Location: index.php");
-                        exit();
-                    } else {
-                        $error = "Database error (execute): " . htmlspecialchars($stmt->error);
-                    }
-                    $stmt->close();
+                    $error = "❌ Unable to save post. Please try again.";
                 }
+                $stmt->close();
+            } catch (Exception $e) {
+                error_log("DB Error: " . $e->getMessage());
+                $error = "❌ Internal server error. Please try again later.";
             }
         }
     }
 }
 
-// show form
 include 'header.php';
 ?>
 
@@ -87,6 +72,7 @@ include 'header.php';
       <label for="content">Content</label>
       <textarea id="content" name="content" required><?php echo htmlspecialchars($content); ?></textarea>
 
+      <!-- CSRF Token -->
       <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
 
       <button type="submit">Save Post</button>

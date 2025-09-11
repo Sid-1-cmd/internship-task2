@@ -19,7 +19,10 @@ $error = "";
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // CSRF check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
         $error = "⚠️ Invalid request. Please try again.";
     } else {
         $username = trim($_POST["username"]);
@@ -40,9 +43,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     // Prevent session fixation
                     session_regenerate_id(true);
 
-                    $_SESSION["user"] = $row["username"];
-                    $_SESSION["role"] = $row["role"]; // admin, editor, user
-                    $_SESSION["user_id"] = $row["id"]; // needed for ownership checks
+                    // Store session securely
+                    $_SESSION["user_id"] = (int)$row["id"];
+                    $_SESSION["user"] = htmlspecialchars($row["username"], ENT_QUOTES, 'UTF-8');
+                    $_SESSION["role"] = $row["role"];
+
+                    // Clear used CSRF token
+                    unset($_SESSION['csrf_token']);
 
                     header("Location: index.php");
                     exit();
@@ -50,7 +57,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $error = "❌ Invalid username or password.";
                 }
             } else {
-                $error = "❌ User not found.";
+                $error = "❌ Invalid username or password.";
             }
 
             $stmt->close();
@@ -63,26 +70,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 <?php include 'header.php'; ?>
 
-<h2>Login</h2>
-<?php if (!empty($error)): ?>
-    <div style="color:red; font-weight:bold; margin-bottom:10px;">
-        <?php echo htmlspecialchars($error); ?>
-    </div>
-<?php endif; ?>
+<div class="container">
+    <h2>Login</h2>
+    <?php if (!empty($error)): ?>
+        <p class="message error"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
+    <?php endif; ?>
 
-<form method="post" action="">
-    <label for="username">Username:</label><br>
-    <input type="text" id="username" name="username" required autocomplete="username"><br><br>
+    <form method="post" action="">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required autocomplete="username">
 
-    <label for="password">Password:</label><br>
-    <input type="password" id="password" name="password" required autocomplete="current-password"><br><br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
 
-    <!-- CSRF Token -->
-    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+        <!-- CSRF Token -->
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8'); ?>">
 
-    <button type="submit">Login</button>
-</form>
+        <button type="submit">Login</button>
+    </form>
 
-<p>Don't have an account? <a href="register.php">Register here</a></p>
+    <p>Don't have an account? <a href="register.php">Register here</a></p>
+</div>
 
 <?php include 'footer.php'; ?>

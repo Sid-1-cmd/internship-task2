@@ -1,10 +1,11 @@
 <?php
 session_start();
 
-// Clear all session variables
+// Unset all session variables
 $_SESSION = [];
+session_unset();
 
-// Destroy session cookie if it exists
+// Destroy session
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
     setcookie(
@@ -17,12 +18,13 @@ if (ini_get("session.use_cookies")) {
         $params["httponly"]
     );
 }
-
-// Finally destroy the session
 session_destroy();
 
-// Optional: flash message
+// Regenerate session ID for extra safety
 session_start();
+session_regenerate_id(true);
+
+// Flash message
 $_SESSION['message'] = "✅ You have been logged out successfully.";
 
 // Redirect to login

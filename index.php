@@ -1,121 +1,128 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 session_start();
-include 'db.php';
-
-if (!isset($_SESSION['user'])) {
-    header("Location: login.php");
-    exit();
-}
-
-// Do NOT override role here – it must be set at login time
-$userId = $_SESSION['user_id'];
-$userRole = $_SESSION['role'];
+require 'db.php';
 
 // ----------------------------
-// Search & Pagination Settings
+// Pagination settings
 // ----------------------------
 $limit = 5; // posts per page
-$page  = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
+$page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
+$page = $page && $page > 0 ? $page : 1;
 $offset = ($page - 1) * $limit;
-$search = isset($_GET['q']) ? trim($_GET['q']) : "";
 
 // ----------------------------
-// Count total posts (prepared)
+// Search handling
 // ----------------------------
-if (!empty($search)) {
-    $like = "%" . $search . "%";
-    $stmt = $conn->prepare("SELECT COUNT(*) AS total FROM posts WHERE title LIKE ? OR content LIKE ?");
-    $stmt->bind_param("ss", $like, $like);
-} else {
-    $stmt = $conn->prepare("SELECT COUNT(*) AS total FROM posts");
+$search = "";
+$whereClause = "";
+$params = [];
+$types = "";
+
+if (isset($_GET['search']) && trim($_GET['search']) !== "") {
+    $search = trim($_GET['search']);
+    $whereClause = "WHERE title LIKE CONCAT('%', ?, '%') OR content LIKE CONCAT('%', ?, '%')";
+    $params[] = $search;
+    $params[] = $search;
+    $types .= "ss";
 }
-$stmt->execute();
-$resultCount = $stmt->get_result();
-$total = $resultCount->fetch_assoc()['total'];
-$totalPages = ceil($total / $limit);
-$stmt->close();
 
 // ----------------------------
-// Fetch posts (with user info)
+// Count total posts (for pagination)
 // ----------------------------
-if (!empty($search)) {
-    $stmt = $conn->prepare("
-        SELECT posts.*, users.username, users.id AS author_id 
-        FROM posts 
-        JOIN users ON posts.user_id = users.id
-        WHERE title LIKE ? OR content LIKE ?
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?");
-    $stmt->bind_param("ssii", $like, $like, $limit, $offset);
+$countSql = "SELECT COUNT(*) AS total FROM posts $whereClause";
+$countStmt = $conn->prepare($countSql);
+
+if ($whereClause) {
+    $countStmt->bind_param($types, ...$params);
+}
+$countStmt->execute();
+$countResult = $countStmt->get_result()->fetch_assoc();
+$totalPosts = (int)$countResult['total'];
+$totalPages = ceil($totalPosts / $limit);
+$countStmt->close();
+
+// ----------------------------
+// Fetch posts
+// ----------------------------
+$sql = "SELECT p.id, p.title, p.content, p.created_at, u.username 
+        FROM posts p 
+        JOIN users u ON p.user_id = u.id
+        $whereClause
+        ORDER BY p.created_at DESC
+        LIMIT ? OFFSET ?";
+$stmt = $conn->prepare($sql);
+
+if ($whereClause) {
+    $types .= "ii";
+    $params[] = $limit;
+    $params[] = $offset;
+    $stmt->bind_param($types, ...$params);
 } else {
-    $stmt = $conn->prepare("
-        SELECT posts.*, users.username, users.id AS author_id 
-        FROM posts 
-        JOIN users ON posts.user_id = users.id
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?");
     $stmt->bind_param("ii", $limit, $offset);
 }
+
 $stmt->execute();
 $posts = $stmt->get_result();
 $stmt->close();
 
-// ✅ Include header
 include 'header.php';
 ?>
 
-<h2>Welcome, <?php echo htmlspecialchars($_SESSION['user']); ?> 🎉</h2>
-<hr>
+<div class="container">
+    <h2>Posts</h2>
 
-<!-- Search Form -->
-<form method="get" action="" class="search-form">
-    <input type="text" name="q" placeholder="Search by title or content"
-           value="<?php echo htmlspecialchars($search); ?>">
-    <button type="submit">Search</button>
-</form>
+    <!-- ✅ Flash message -->
+    <?php if (isset($_SESSION['message'])): ?>
+        <p class="message"><?php echo htmlspecialchars($_SESSION['message']); ?></p>
+        <?php unset($_SESSION['message']); ?>
+    <?php endif; ?>
 
-<h3>All Posts</h3>
+    <!-- ✅ Search form -->
+    <form method="get" action="index.php" class="search-form">
+        <input type="text" name="search" placeholder="Search posts..." 
+               value="<?php echo htmlspecialchars($search); ?>">
+        <button type="submit">Search</button>
+    </form>
 
-<?php if ($posts && $posts->num_rows > 0): ?>
-    <?php while ($row = $posts->fetch_assoc()): ?>
-        <div class="post">
-            <h4><?php echo htmlspecialchars($row['title']); ?></h4>
-            <p><?php echo nl2br(htmlspecialchars($row['content'])); ?></p>
-            <small>
-                Posted by: <?php echo htmlspecialchars($row['username']); ?> 
-                on <?php echo htmlspecialchars($row['created_at']); ?>
-            </small><br>
+    <!-- ✅ Posts listing -->
+    <?php if ($posts->num_rows > 0): ?>
+        <?php while ($row = $posts->fetch_assoc()): ?>
+            <div class="post">
+                <h3><?php echo htmlspecialchars($row['title']); ?></h3>
+                <p><?php echo nl2br(htmlspecialchars($row['content'])); ?></p>
+                <small>By <?php echo htmlspecialchars($row['username']); ?> 
+                       on <?php echo htmlspecialchars($row['created_at']); ?></small>
+                <br>
+                <?php if (isset($_SESSION['user'])): ?>
+                    <?php if ($_SESSION['role'] === 'admin' || $_SESSION['user'] === $row['username']): ?>
+                        <a href="edit.php?id=<?php echo $row['id']; ?>">Edit</a> | 
+                        <a href="delete.php?id=<?php echo $row['id']; ?>&csrf=<?php echo $_SESSION['csrf_token']; ?>"
+                           onclick="return confirm('Are you sure you want to delete this post?');">Delete</a>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        <?php endwhile; ?>
+    <?php else: ?>
+        <p>No posts found.</p>
+    <?php endif; ?>
 
-            <!-- Role & Ownership-based actions -->
-            <?php if ($userRole === 'admin' || ($userRole === 'editor' && $row['author_id'] == $userId)): ?>
-                <a href="edit.php?id=<?php echo $row['id']; ?>">✏️ Edit</a>
-            <?php endif; ?>
+    <!-- ✅ Pagination -->
+    <div class="pagination">
+        <?php if ($page > 1): ?>
+            <a href="?page=<?php echo $page - 1; ?>&search=<?php echo urlencode($search); ?>">&laquo; Prev</a>
+        <?php endif; ?>
 
-            <?php if ($userRole === 'admin'): ?>
-                | <a href="delete.php?id=<?php echo $row['id']; ?>&csrf=<?php echo $_SESSION['csrf_token']; ?>">🗑️ Delete</a>
-            <?php endif; ?>
-        </div>
-        <hr>
-    <?php endwhile; ?>
-<?php else: ?>
-    <p>No posts found.</p>
-<?php endif; ?>
+        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+            <a href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>" 
+               class="<?php echo $i == $page ? 'active' : ''; ?>">
+               <?php echo $i; ?>
+            </a>
+        <?php endfor; ?>
 
-<!-- Pagination Links -->
-<div class="pagination">
-    <?php
-    if ($totalPages > 1) {
-        for ($i = 1; $i <= $totalPages; $i++) {
-            $link = "?page=$i";
-            if (!empty($search)) $link .= "&q=" . urlencode($search);
-            $active = $i == $page ? "class='active-page'" : "";
-            echo "<a href='$link' $active>$i</a> ";
-        }
-    }
-    ?>
+        <?php if ($page < $totalPages): ?>
+            <a href="?page=<?php echo $page + 1; ?>&search=<?php echo urlencode($search); ?>">Next &raquo;</a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <?php include 'footer.php'; ?>

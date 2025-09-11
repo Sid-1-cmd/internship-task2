@@ -45,14 +45,15 @@ if (!empty($_SESSION['user'])) {
     </div>
   </div>
 
+  <!-- Flash message -->
+  <?php if (!empty($_SESSION['message'])): ?>
+    <div class="flash-message">
+      <?php 
+        echo htmlspecialchars($_SESSION['message']); 
+        unset($_SESSION['message']); // Clear after showing
+      ?>
+    </div>
+  <?php endif; ?>
+
   <!-- Main container -->
   <div class="container">
-    <!-- Flash message -->
-    <?php if (!empty($_SESSION['message'])): ?>
-      <p class="message">
-        <?php 
-          echo htmlspecialchars($_SESSION['message']); 
-          unset($_SESSION['message']); // Clear after showing
-        ?>
-      </p>
-    <?php endif; ?>

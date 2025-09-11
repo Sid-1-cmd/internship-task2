@@ -1,21 +1,29 @@
 <?php
 session_start();
-include 'db.php';
+require 'db.php';
 
+// ----------------------------
 // Require login
+// ----------------------------
 if (!isset($_SESSION['user'])) {
     header("Location: login.php");
     exit();
 }
 
-// Validate ID
+// ----------------------------
+// Validate post ID
+// ----------------------------
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) {
-    exit("⚠️ Invalid post ID.");
+    $_SESSION['message'] = "⚠️ Invalid post ID.";
+    header("Location: index.php");
+    exit();
 }
 
-// Fetch post
-$stmt = $conn->prepare("SELECT * FROM posts WHERE id = ?");
+// ----------------------------
+// Fetch post securely
+// ----------------------------
+$stmt = $conn->prepare("SELECT id, title, content, user_id FROM posts WHERE id = ?");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $res = $stmt->get_result();
@@ -23,61 +31,85 @@ $post = $res->fetch_assoc();
 $stmt->close();
 
 if (!$post) {
-    exit("⚠️ Post not found.");
+    $_SESSION['message'] = "⚠️ Post not found.";
+    header("Location: index.php");
+    exit();
 }
 
-// Check permissions: Admin OR Owner
+// ----------------------------
+// Check permissions
+// ----------------------------
 if ($_SESSION['role'] !== 'admin' && $_SESSION['user_id'] != $post['user_id']) {
-    exit("⛔ You do not have permission to edit this post.");
+    $_SESSION['message'] = "⛔ You do not have permission to edit this post.";
+    header("Location: index.php");
+    exit();
 }
 
-// CSRF token
-if (empty($_SESSION['csrf_token'])) {
+// ----------------------------
+// CSRF Protection
+// ----------------------------
+if ($_SERVER["REQUEST_METHOD"] === "GET") {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
 $error = "";
 
+// ----------------------------
 // Handle form submit
+// ----------------------------
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-        exit("⚠️ Invalid request.");
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
+        $_SESSION['message'] = "⚠️ Invalid request (CSRF check failed).";
+        header("Location: index.php");
+        exit();
     }
 
-    $title = trim($_POST['title']);
+    $title   = trim($_POST['title']);
     $content = trim($_POST['content']);
 
     if ($title !== "" && $content !== "") {
-        $stmt = $conn->prepare("UPDATE posts SET title=?, content=? WHERE id=?");
+        $stmt = $conn->prepare("UPDATE posts SET title = ?, content = ? WHERE id = ?");
         $stmt->bind_param("ssi", $title, $content, $id);
-        $stmt->execute();
-        $stmt->close();
 
-        $_SESSION['message'] = "✅ Post updated successfully.";
-        header("Location: index.php");
-        exit();
+        if ($stmt->execute()) {
+            unset($_SESSION['csrf_token']); // ✅ Refresh token after success
+            $_SESSION['message'] = "✅ Post updated successfully.";
+            header("Location: index.php");
+            exit();
+        } else {
+            $error = "❌ Failed to update post.";
+        }
+        $stmt->close();
     } else {
         $error = "⚠️ Title and content cannot be empty.";
     }
 }
 
+// ----------------------------
+// View
+// ----------------------------
 include 'header.php';
 ?>
 
 <h2>Edit Post</h2>
 
 <?php if (!empty($error)): ?>
-    <p style="color:red;"><?php echo htmlspecialchars($error); ?></p>
+    <p class="message error"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
 <?php endif; ?>
 
 <form method="POST">
-  <input type="text" name="title" value="<?php echo htmlspecialchars($post['title']); ?>" required><br><br>
-  <textarea name="content" required><?php echo htmlspecialchars($post['content']); ?></textarea><br><br>
+    <input type="text" name="title" 
+           value="<?php echo htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8'); ?>" required><br><br>
   
-  <!-- CSRF Token -->
-  <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+    <textarea name="content" required><?php echo htmlspecialchars($post['content'], ENT_QUOTES, 'UTF-8'); ?></textarea><br><br>
+  
+    <!-- ✅ CSRF Token -->
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8'); ?>">
 
-  <button type="submit">Update</button>
+    <button type="submit">Update</button>
 </form>
 
 <?php include 'footer.php'; ?>
